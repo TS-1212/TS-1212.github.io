@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Connectivity Graph Visualizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .file-input {
+            padding: 8px;
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .search-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .search-box {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 250px;
+        }
+
+        .search-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ccc;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .search-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            font-size: 12px;
+        }
+
+        .search-item:hover,
+        .search-item.highlighted {
+            background: #f0f0f0;
+        }
+
+        .search-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-item .course-number {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .search-item .course-name {
+            color: #666;
+            margin-left: 8px;
+        }
+
+        .search-no-results {
+            padding: 8px 12px;
+            color: #999;
+            font-style: italic;
+            font-size: 12px;
+        }
+        
+        .info-panel {
+            background: #f8f9fa;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .legend-line {
+            width: 30px;
+            height: 2px;
+            background: #333;
+        }
+        
+        .legend-line.dashed {
+            background: repeating-linear-gradient(to right, red 0, red 5px, transparent 5px, transparent 10px);
+        }
+        
+        #graph-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            font-size: 12px;
+            pointer-events: none;
+            max-width: 300px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        
+        .node {
+            cursor: pointer;
+            stroke: #333;
+            stroke-width: 1.5px;
+        }
+        
+        .edge {
+            fill: none;
+            stroke: #999;
+            stroke-width: 1.5px;
+            opacity: 0.6;
+        }
+        
+        .edge.parallel {
+            stroke: red;
+            stroke-dasharray: 5,5;
+        }
+        
+        .node-label {
+            font-size: 10px;
+            text-anchor: middle;
+            pointer-events: none;
+            fill: #333;
+        }
+        
+        .chain-mode {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        .detailed-info {
+            position: fixed;
+            top: 50px;
+            right: 20px;
+            width: 400px;
+            max-height: 80vh;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 1001;
+            overflow-y: auto;
+        }
+        
+        .detailed-info .header {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            font-weight: bold;
+        }
+        
+        .detailed-info .content {
+            padding: 15px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        .detailed-info .close-btn {
+            float: right;
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #999;
+        }
+        
+        .console-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 500px;
+            height: 400px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 1002;
+            display: none;
+            flex-direction: column;
+        }
+        
+        .console-header {
+            background: #f8f9fa;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .console-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .console-filter {
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        .console-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.3;
+            background: #f9f9f9;
+        }
+        
+        .console-line {
+            margin-bottom: 2px;
+            padding: 2px;
+        }
+        
+        .console-line.highlight {
+            background-color: yellow;
+        }
+        
+        .console-line.debug {
+            color: #0066cc;
+            font-weight: bold;
+        }
+        
+        .console-line.warn {
+            color: #cc6600;
+        }
+        
+        .console-line.error {
+            color: #cc0000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Course Connectivity Graph Visualizer</h1>
+            <p>Interactive visualization of course prerequisites and dependencies</p>
+        </div>
+        
+        <div class="controls">
+            <label class="file-input">
+                <input type="file" id="csvFile" accept=".csv" style="display: none;">
+                Upload Course Data CSV
+            </label>
+            
+            <div class="search-container">
+                <input type="text" id="searchBox" class="search-box" placeholder="Search course number or name..." autocomplete="off">
+                <div id="searchDropdown" class="search-dropdown"></div>
+            </div>
+            
+            <label style="display: flex; align-items: center; gap: 5px;">
+                <input type="checkbox" id="hidePhantoms" checked>
+                Hide phantom courses
+            </label>
+            
+            <button id="showConsole">Show Debug Console</button>
+            <button id="resetView">Reset View</button>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-line"></div>
+                <span>Prerequisites</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line dashed"></div>
+                <span>Parallel Prerequisites</span>
+            </div>
+            <div class="legend-item">
+                <div style="width: 15px; height: 15px; background: red; border-radius: 50%;"></div>
+                <span>Prerequisites (Chain Mode)</span>
+            </div>
+            <div class="legend-item">
+                <div style="width: 15px; height: 15px; background: yellow; border-radius: 50%;"></div>
+                <span>Selected Course</span>
+            </div>
+            <div class="legend-item">
+                <div style="width: 15px; height: 15px; background: blue; border-radius: 50%;"></div>
+                <span>Dependents (Chain Mode)</span>
+            </div>
+        </div>
+        
+        <div id="chainModeInfo" class="chain-mode" style="display: none;">
+            <strong>Chain Focus Mode Active</strong>
+            <span id="chainModeText"></span>
+            <br><small>Click background or "Reset View" to exit chain mode</small>
+        </div>
+        
+        <div id="graph-container">
+            <div class="status" id="status">
+                Upload a CSV file to begin visualization
+            </div>
+        </div>
+        
+    </div>
+    
+    <div id="tooltip" class="tooltip" style="display: none;"></div>
+    <div id="detailedInfo" class="detailed-info" style="display: none;">
+        <div class="header">
+            <button class="close-btn" onclick="closeDetailedInfo()">×</button>
+            <div id="detailedInfoTitle">Course Details</div>
+        </div>
+        <div class="content" id="detailedInfoContent"></div>
+    </div>
+    
+    <div id="consolePanel" class="console-panel">
+        <div class="console-header">
+            <strong>Debug Console</strong>
+            <div class="console-controls">
+                <input type="text" id="consoleFilter" class="console-filter" placeholder="Filter (e.g., 134147)">
+                <button id="clearConsole">Clear</button>
+                <button id="downloadConsole">Download</button>
+                <button class="close-btn" onclick="closeConsole()">×</button>
+            </div>
+        </div>
+        <div class="console-content" id="consoleContent"></div>
+    </div>
+
+    <script>
+        // Global variables
+        let graph = { nodes: [], edges: [] };
+        let coursesInfo = {};
+        let levels = {};
+        let svg, g, simulation;
+        let width = 1200, height = 600;
+        let chainMode = false;
+        let focusedNode = null;
+        let allNodes = [];
+        let allEdges = [];
+        let consoleMessages = []; // Store console messages
+        
+        // Console capture functionality
+        function captureConsole() {
+            // Override console methods to capture messages
+            const originalLog = console.log;
+            const originalWarn = console.warn;
+            const originalError = console.error;
+            
+            console.log = function(...args) {
+                const message = args.join(' ');
+                consoleMessages.push({ type: 'log', message, timestamp: new Date().toISOString() });
+                updateConsoleDisplay();
+                originalLog.apply(console, args);
+            };
+            
+            console.warn = function(...args) {
+                const message = args.join(' ');
+                consoleMessages.push({ type: 'warn', message, timestamp: new Date().toISOString() });
+                updateConsoleDisplay();
+                originalWarn.apply(console, args);
+            };
+            
+            console.error = function(...args) {
+                const message = args.join(' ');
+                consoleMessages.push({ type: 'error', message, timestamp: new Date().toISOString() });
+                updateConsoleDisplay();
+                originalError.apply(console, args);
+            };
+        }
+        
+        function updateConsoleDisplay() {
+            const consoleContent = document.getElementById('consoleContent');
+            const filter = document.getElementById('consoleFilter').value.toLowerCase();
+            
+            if (!consoleContent) return;
+            
+            let filteredMessages = consoleMessages;
+            if (filter) {
+                filteredMessages = consoleMessages.filter(msg => 
+                    msg.message.toLowerCase().includes(filter)
+                );
+            }
+            
+            const html = filteredMessages.map(msg => {
+                const isDebug = msg.message.includes('DEBUG');
+                const classes = ['console-line', msg.type];
+                if (isDebug) classes.push('debug');
+                if (filter && msg.message.toLowerCase().includes(filter)) {
+                    classes.push('highlight');
+                }
+                
+                return `<div class="${classes.join(' ')}">${msg.message}</div>`;
+            }).join('');
+            
+            consoleContent.innerHTML = html;
+            consoleContent.scrollTop = consoleContent.scrollHeight;
+        }
+        
+        function showConsole() {
+            document.getElementById('consolePanel').style.display = 'flex';
+            updateConsoleDisplay();
+        }
+        
+        function closeConsole() {
+            document.getElementById('consolePanel').style.display = 'none';
+        }
+        
+        function clearConsole() {
+            consoleMessages = [];
+            updateConsoleDisplay();
+        }
+        
+        function downloadConsole() {
+            const filter = document.getElementById('consoleFilter').value.toLowerCase();
+            let filteredMessages = consoleMessages;
+            if (filter) {
+                filteredMessages = consoleMessages.filter(msg => 
+                    msg.message.toLowerCase().includes(filter)
+                );
+            }
+            
+            const text = filteredMessages.map(msg => 
+                `[${msg.timestamp}] ${msg.type.toUpperCase()}: ${msg.message}`
+            ).join('\n');
+            
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `console-output-${filter || 'all'}-${new Date().toISOString().slice(0,19)}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // Initialize the visualization
+        function initVisualization() {
+            const container = d3.select('#graph-container');
+            container.select('.status').remove();
+            
+            svg = container.append('svg')
+                .attr('width', '100%')
+                .attr('height', '100%')
+                .attr('viewBox', `0 0 ${width} ${height}`)
+                .call(d3.zoom().on('zoom', zoomed));
+            
+            g = svg.append('g');
+            
+            // Add arrow markers for directed edges
+            const defs = svg.append('defs');
+            
+            // Default gray arrows
+            defs.append('marker')
+                .attr('id', 'arrowhead')
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 20)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('fill', '#999');
+                
+            // Red arrows for parallel courses
+            defs.append('marker')
+                .attr('id', 'arrowhead-red')
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 20)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('fill', 'red');
+                
+            // Red arrows for chain mode incoming edges
+            defs.append('marker')
+                .attr('id', 'arrowhead-chain-in')
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 20)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('fill', 'red');
+                
+            // Blue arrows for chain mode outgoing edges
+            defs.append('marker')
+                .attr('id', 'arrowhead-chain-out')
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 20)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('fill', 'blue');
+        }
+        
+        function zoomed(event) {
+            g.attr('transform', event.transform);
+        }
+        
+        // Parse prerequisites from string
+        function parsePrerequisites(prereqStr) {
+            if (!prereqStr) return [];
+            return (prereqStr.match(/\d{5,6}/g) || []);
+        }
+        
+        // Build graph from CSV data
+        function buildGraph(data, includeIsolated = false, filterUnnamed = true) {
+            const nodes = [];
+            const edges = [];
+            const courseInfo = {};
+            const nodeSet = new Set();
+            const missingPrereqs = new Set(); // Track missing prerequisite courses
+            
+            // Debug: Log column names
+            if (data.length > 0) {
+                console.log('CSV Columns:', Object.keys(data[0]));
+            }
+            
+            // Process each row
+            data.forEach(row => {
+                const courseNum = String(row[Object.keys(row)[0]] || '').trim();
+                const courseName = String(row[Object.keys(row)[1]] || '').trim();
+                
+                if (!courseNum) return;
+                
+                // Filter unnamed courses if requested
+                if (filterUnnamed && (!courseName || courseName === 'undefined')) {
+                    return;
+                }
+                
+                nodeSet.add(courseNum);
+                
+                // Store course information
+                courseInfo[courseNum] = {
+                    name: courseName || '',
+                    prereqs: [],
+                    parallel: [],
+                    credits: 0,
+                    semesters: '',
+                    teachers: '',
+                    lectureHours: '',
+                    tutorialHours: '',
+                    labHours: '',
+                    isPhantom: false
+                };
+                
+                // Find prerequisite and parallel columns with better detection
+                Object.keys(row).forEach(key => {
+                    const keyLower = key.toLowerCase();
+                    const value = row[key];
+                    
+                    if (!value) return;
+                    
+                    // More comprehensive column detection
+                    if (key.includes('קדם') || keyLower.includes('prerequis') || keyLower.includes('prereq') || 
+                        keyLower.includes('depend') || key.includes('דרוש')) {
+                        const prereqs = parsePrerequisites(value);
+                        courseInfo[courseNum].prereqs = prereqs;
+                        if (prereqs.length > 0) {
+                            console.log(`Course ${courseNum} has prerequisites:`, prereqs);
+                        }
+                    } else if (key.includes('צמוד') || keyLower.includes('parallel') || keyLower.includes('concurrent') ||
+                              keyLower.includes('co-req') || keyLower.includes('coreq')) {
+                        const parallel = parsePrerequisites(value);
+                        courseInfo[courseNum].parallel = parallel;
+                        if (parallel.length > 0) {
+                            console.log(`Course ${courseNum} has parallel requirements:`, parallel);
+                        }
+                    } else if (keyLower.includes('credit') || key.includes('נקודות')) {
+                        courseInfo[courseNum].credits = parseFloat(value) || 0;
+                    } else if (keyLower.includes('semester') || key.includes('סמסטר')) {
+                        courseInfo[courseNum].semesters = value;
+                    } else if (keyLower.includes('teacher') || keyLower.includes('instructor') ||
+                              key.includes('מרצה') || key.includes('מורה')) {
+                        courseInfo[courseNum].teachers = value;
+                    } else if (key.includes('הרצאה') || keyLower.includes('lecture')) {
+                        courseInfo[courseNum].lectureHours = value && value !== '-' ? value : '';
+                    } else if (key.includes('תרגול') || keyLower.includes('tutorial') || keyLower.includes('recitation')) {
+                        courseInfo[courseNum].tutorialHours = value && value !== '-' ? value : '';
+                    } else if (key.includes('מעבדה') || keyLower.includes('lab')) {
+                        courseInfo[courseNum].labHours = value && value !== '-' ? value : '';
+                    }
+                });
+            });
+            
+            // Identify missing prerequisite courses
+            Object.values(courseInfo).forEach(course => {
+                [...course.prereqs, ...course.parallel].forEach(prereq => {
+                    if (!nodeSet.has(prereq)) {
+                        missingPrereqs.add(prereq);
+                        console.warn(`Missing prerequisite course: ${prereq}`);
+                    }
+                });
+            });
+            
+            // Create phantom nodes for missing prerequisites
+            missingPrereqs.forEach(courseNum => {
+                nodeSet.add(courseNum);
+                courseInfo[courseNum] = {
+                    name: `(Missing Course)`,
+                    prereqs: [],
+                    parallel: [],
+                    credits: 0,
+                    semesters: '',
+                    teachers: '',
+                    isPhantom: true
+                };
+                console.log(`Created phantom node for missing course: ${courseNum}`);
+            });
+            
+            // Create nodes (including phantom nodes)
+            nodeSet.forEach(courseNum => {
+                if (courseInfo[courseNum]) {
+                    nodes.push({
+                        id: courseNum,
+                        ...courseInfo[courseNum]
+                    });
+                }
+            });
+            
+            // Create edges
+            nodes.forEach(node => {
+                // Add prerequisite edges
+                node.prereqs.forEach(prereq => {
+                    if (nodeSet.has(prereq)) {
+                        edges.push({
+                            source: prereq,
+                            target: node.id,
+                            type: 'prerequisite'
+                        });
+                    }
+                });
+
+                // Add parallel edges
+                node.parallel.forEach(parallel => {
+                    if (nodeSet.has(parallel)) {
+                        edges.push({
+                            source: parallel,
+                            target: node.id,
+                            type: 'parallel'
+                        });
+                    }
+                });
+            });
+            
+            // Debug: Log total edges and phantom nodes
+            console.log(`Total edges created: ${edges.length} (${edges.filter(e => e.type === 'prerequisite').length} prerequisites, ${edges.filter(e => e.type === 'parallel').length} parallel)`);
+            console.log(`Created ${missingPrereqs.size} phantom nodes for missing prerequisites`);
+            
+            // Remove isolated nodes if requested (but keep phantom nodes as they're needed)
+            if (!includeIsolated) {
+                const connectedNodes = new Set();
+                edges.forEach(edge => {
+                    connectedNodes.add(edge.source);
+                    connectedNodes.add(edge.target);
+                });
+                
+                // Keep phantom nodes even if they appear isolated, since they're important references
+                const filteredNodes = nodes.filter(node => 
+                    connectedNodes.has(node.id) || node.isPhantom
+                );
+                
+                return {
+                    nodes: filteredNodes,
+                    edges: edges,
+                    courseInfo: courseInfo
+                };
+            }
+            
+            return { nodes, edges, courseInfo };
+        }
+        
+        // Calculate connectivity levels with phantom nodes at level -1
+        function calculateLevels(nodes, edges) {
+            const levels = {};
+            const inDegree = {};
+            const adjList = {};
+            
+            // Initialize
+            nodes.forEach(node => {
+                // Phantom nodes get level -1 immediately
+                if (node.isPhantom) {
+                    levels[node.id] = -1;
+                    inDegree[node.id] = 0; // Phantom nodes have no prerequisites
+                } else {
+                    inDegree[node.id] = 0;
+                }
+                adjList[node.id] = [];
+            });
+            
+            // Build adjacency list and calculate in-degrees from ALL edge types
+            edges.forEach(edge => {
+                const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source;
+                const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+                
+                adjList[sourceId].push(targetId);
+                // Count in-degree for non-phantom target nodes
+                const targetNode = nodes.find(n => n.id === targetId);
+                if (targetNode && !targetNode.isPhantom) {
+                    inDegree[targetId]++;
+                    console.log(`Edge: ${sourceId} -> ${targetId}, target in-degree now: ${inDegree[targetId]}`);
+                }
+            });
+            
+            
+            // Topological sort to assign levels (starting from level 0 for real courses)
+            const queue = [];
+            nodes.forEach(node => {
+                if (!node.isPhantom && inDegree[node.id] === 0) {
+                    levels[node.id] = 0;
+                    queue.push(node.id);
+                    console.log(`Starting with level 0: ${node.id}`);
+                }
+            });
+            
+            while (queue.length > 0) {
+                const current = queue.shift();
+                const currentLevel = levels[current];
+
+                adjList[current].forEach(neighbor => {
+                    const neighborNode = nodes.find(n => n.id === neighbor);
+                    if (neighborNode && !neighborNode.isPhantom) {
+                        inDegree[neighbor]--;
+
+                        if (inDegree[neighbor] === 0) {
+                            const newLevel = currentLevel + 1;
+                            levels[neighbor] = newLevel;
+                            queue.push(neighbor);
+                        }
+                    }
+                });
+            }
+            
+            // Handle any remaining nodes (cycles or missing dependencies) - but not phantoms
+            const unprocessedNodes = nodes.filter(node => !node.isPhantom && levels[node.id] === undefined);
+            if (unprocessedNodes.length > 0) {
+                console.warn(`\nFound ${unprocessedNodes.length} unprocessed courses (possible cycles or missing dependencies):`);
+                
+                unprocessedNodes.forEach(node => {
+                    console.warn(`Course ${node.id}:`);
+                    console.warn(`  In-degree remaining: ${inDegree[node.id]}`);
+                    console.warn(`  Prerequisites: [${node.prereqs.join(', ')}]`);
+                    console.warn(`  Parallel: [${node.parallel.join(', ')}]`);
+                    
+                    // Check which of its prerequisites have levels assigned
+                    const prereqLevels = node.prereqs.map(prereq => {
+                        const level = levels[prereq];
+                        return `${prereq}:${level !== undefined ? level : 'UNASSIGNED'}`;
+                    });
+                    console.warn(`  Prerequisite levels: [${prereqLevels.join(', ')}]`);
+                    
+                    // Check which of its parallel courses have levels assigned  
+                    const parallelLevels = node.parallel.map(parallel => {
+                        const level = levels[parallel];
+                        return `${parallel}:${level !== undefined ? level : 'UNASSIGNED'}`;
+                    });
+                    console.warn(`  Parallel course levels: [${parallelLevels.join(', ')}]`);
+                    
+                    // Assign level based on prerequisites that do have levels
+                    const assignedPrereqLevels = node.prereqs
+                        .map(prereq => levels[prereq])
+                        .filter(level => level !== undefined);
+                    
+                    const assignedParallelLevels = node.parallel
+                        .map(parallel => levels[parallel])
+                        .filter(level => level !== undefined);
+                    
+                    const allAssignedLevels = [...assignedPrereqLevels, ...assignedParallelLevels];
+                    
+                    if (allAssignedLevels.length > 0) {
+                        const maxLevel = Math.max(...allAssignedLevels);
+                        levels[node.id] = maxLevel + 1;
+                        console.warn(`  Assigned level ${maxLevel + 1} based on existing prerequisites`);
+                    } else {
+                        levels[node.id] = 0;
+                        console.warn(`  No prerequisite levels found, assigned level 0`);
+                    }
+                });
+            }
+            
+            // Debug: Final level assignments
+            console.log('\nFinal level assignments:');
+            Object.keys(levels).sort().forEach(courseId => {
+                console.log(`${courseId}: Level ${levels[courseId]}`);
+            });
+            
+            return levels;
+        }
+        
+        // Position nodes by levels with phantom nodes in top row
+        function positionNodesByLevel(nodes, levels) {
+            const nodesByLevel = {};
+            const minLevel = Math.min(...Object.values(levels)); // Should be -1 if phantoms exist
+            const maxLevel = Math.max(...Object.values(levels));
+            const levelRange = maxLevel - minLevel;
+            
+            // Group nodes by level
+            nodes.forEach(node => {
+                const level = levels[node.id] || 0;
+                if (!nodesByLevel[level]) nodesByLevel[level] = [];
+                nodesByLevel[level].push(node);
+            });
+            
+            // Position nodes in semi-circular arc layout with fundamental courses on top
+            const centerX = width / 2;
+            const centerY = 180; // Position arc center lower to account for phantom courses at top
+            const baseRadius = 80; // Starting radius for level 0 (fundamental courses)
+            const levelSpacing = 70; // Increased spacing between levels for better text clearance
+            const arcAngle = Math.PI * 0.9; // 90% of a full semicircle (about 162 degrees)
+
+            Object.keys(nodesByLevel).forEach(level => {
+                const levelNodes = nodesByLevel[level];
+                const levelNum = parseInt(level);
+
+                if (levelNum === -1) {
+                    // Phantom nodes arranged in horizontal lines at the top
+                    const phantomStartY = 30; // Start near top of chart
+                    const phantomLineHeight = 40; // Space between phantom lines
+                    const phantomMargin = 50; // Margin from left/right edges
+                    const maxPhantomPerLine = Math.floor((width - 2 * phantomMargin) / 80); // Approximately 80px per phantom node
+
+                    levelNodes.forEach((node, i) => {
+                        const lineIndex = Math.floor(i / maxPhantomPerLine);
+                        const positionInLine = i % maxPhantomPerLine;
+                        const nodesInThisLine = Math.min(maxPhantomPerLine, levelNodes.length - lineIndex * maxPhantomPerLine);
+
+                        // Calculate X position - evenly distributed across available width
+                        const availableWidth = width - 2 * phantomMargin;
+                        const spacing = nodesInThisLine > 1 ? availableWidth / (nodesInThisLine - 1) : 0;
+                        node.x = phantomMargin + (positionInLine * spacing);
+
+                        // Calculate Y position - multiple lines if needed
+                        node.y = phantomStartY + (lineIndex * phantomLineHeight);
+
+                        node.level = levelNum;
+                        node.fx = node.x;
+                        node.fy = node.y;
+                    });
+                } else {
+                    // Regular levels in concentric arcs - level 0 closest to top
+                    const normalizedLevel = levelNum - minLevel; // Adjust for phantom level
+                    const radius = baseRadius + normalizedLevel * levelSpacing;
+
+                    levelNodes.forEach((node, i) => {
+                        if (levelNodes.length === 1) {
+                            // Single node centered on the arc
+                            node.x = centerX;
+                            node.y = centerY + radius; // + to go downward from center
+                        } else {
+                            // Multiple nodes distributed along the arc
+                            const angleStep = arcAngle / Math.max(levelNodes.length - 1, 1);
+                            const angle = -arcAngle/2 + (i * angleStep);
+                            node.x = centerX + radius * Math.cos(angle + Math.PI/2);
+                            node.y = centerY + radius * Math.sin(angle + Math.PI/2); // + to go downward
+                        }
+                        node.level = levelNum;
+                        node.fx = node.x;
+                        node.fy = node.y;
+                    });
+                }
+            });
+            
+            // Debug log level distribution
+            Object.keys(nodesByLevel).forEach(level => {
+                const levelNodes = nodesByLevel[level];
+                if (level == -1) {
+                    console.log(`Level ${level} (Phantom): ${levelNodes.length} courses -`, levelNodes.map(n => n.id));
+                } else {
+                    console.log(`Level ${level}: ${levelNodes.length} courses`);
+                }
+            });
+        }
+        
+        // Create tooltip content
+        function createTooltipContent(node) {
+            let content = `<strong>Course: ${node.id}</strong><br>`;
+            if (node.name) content += `<strong>Name:</strong> ${node.name}<br>`;
+            if (node.credits) content += `<strong>Credits:</strong> ${node.credits}<br>`;
+
+            // Add hours information
+            const hours = [];
+            if (node.lectureHours) hours.push(`${node.lectureHours}L`);
+            if (node.tutorialHours) hours.push(`${node.tutorialHours}T`);
+            if (node.labHours) hours.push(`${node.labHours}Lab`);
+            if (hours.length > 0) content += `<strong>Hours:</strong> ${hours.join(', ')}<br>`;
+
+            if (node.semesters) content += `<strong>Semesters:</strong> ${node.semesters}<br>`;
+            if (node.teachers) content += `<strong>Teachers:</strong> ${node.teachers}<br>`;
+            
+            // Collect and deduplicate all prerequisites
+            const allPrereqs = new Map();
+            const prereqTypes = new Map(); // Track which type each prereq is
+
+            // Add regular prerequisites
+            if (node.prereqs && node.prereqs.length > 0) {
+                node.prereqs.forEach(prereq => {
+                    const prereqInfo = coursesInfo[prereq];
+                    if (prereqInfo && !prereqInfo.isPhantom && prereqInfo.name) {
+                        allPrereqs.set(prereq, prereqInfo);
+                        prereqTypes.set(prereq, 'prerequisite');
+                    }
+                });
+            }
+
+            // Add parallel prerequisites (mark as parallel if not already a regular prereq)
+            if (node.parallel && node.parallel.length > 0) {
+                node.parallel.forEach(parallel => {
+                    const parallelInfo = coursesInfo[parallel];
+                    if (parallelInfo && !parallelInfo.isPhantom && parallelInfo.name) {
+                        allPrereqs.set(parallel, parallelInfo);
+                        if (!prereqTypes.has(parallel)) {
+                            prereqTypes.set(parallel, 'parallel');
+                        } else {
+                            prereqTypes.set(parallel, 'both'); // Course is both prereq and parallel
+                        }
+                    }
+                });
+            }
+
+            // Display deduplicated prerequisites
+            if (allPrereqs.size > 0) {
+                content += `<br><strong>Prerequisites:</strong><br>`;
+                const sortedPrereqs = Array.from(allPrereqs.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+                sortedPrereqs.forEach(([courseId, courseInfo]) => {
+                    const type = prereqTypes.get(courseId);
+                    const typeLabel = type === 'parallel' ? ' (Parallel)' : type === 'both' ? ' (Prerequisite & Parallel)' : '';
+                    content += `${courseId} - ${courseInfo.name}${typeLabel}<br>`;
+                });
+            }
+            
+            return content;
+        }
+        
+        // Show detailed info panel
+        function showDetailedInfo(node) {
+            const panel = d3.select('#detailedInfo');
+            const title = d3.select('#detailedInfoTitle');
+            const content = d3.select('#detailedInfoContent');
+            
+            title.text(`Course Details: ${node.id}`);
+            
+            let html = `<h4>${node.id}`;
+            if (node.name) html += ` - ${node.name}`;
+            html += `</h4>`;
+            
+            if (node.credits) html += `<p><strong>Credits:</strong> ${node.credits}</p>`;
+
+            // Add hours information
+            const hours = [];
+            if (node.lectureHours) hours.push(`${node.lectureHours} Lecture`);
+            if (node.tutorialHours) hours.push(`${node.tutorialHours} Tutorial`);
+            if (node.labHours) hours.push(`${node.labHours} Lab`);
+            if (hours.length > 0) html += `<p><strong>Hours:</strong> ${hours.join(', ')}</p>`;
+
+            if (node.semesters) html += `<p><strong>Semesters:</strong> ${node.semesters}</p>`;
+            if (node.teachers) html += `<p><strong>Teachers:</strong> ${node.teachers}</p>`;
+            
+            html += `<p><strong>Connectivity Level:</strong> ${levels[node.id] || 0}</p>`;
+            
+            // Collect and deduplicate all prerequisites (excluding phantom courses)
+            const allPrereqs = new Map();
+            const prereqTypes = new Map(); // Track which type each prereq is
+
+            // Add regular prerequisites
+            if (node.prereqs && node.prereqs.length > 0) {
+                node.prereqs.forEach(prereq => {
+                    const prereqInfo = coursesInfo[prereq];
+                    if (prereqInfo && !prereqInfo.isPhantom && prereqInfo.name) {
+                        allPrereqs.set(prereq, prereqInfo);
+                        prereqTypes.set(prereq, 'prerequisite');
+                    }
+                });
+            }
+
+            // Add parallel prerequisites (mark as parallel if not already a regular prereq)
+            if (node.parallel && node.parallel.length > 0) {
+                node.parallel.forEach(parallel => {
+                    const parallelInfo = coursesInfo[parallel];
+                    if (parallelInfo && !parallelInfo.isPhantom && parallelInfo.name) {
+                        allPrereqs.set(parallel, parallelInfo);
+                        if (!prereqTypes.has(parallel)) {
+                            prereqTypes.set(parallel, 'parallel');
+                        } else {
+                            prereqTypes.set(parallel, 'both'); // Course is both prereq and parallel
+                        }
+                    }
+                });
+            }
+
+            // Display deduplicated prerequisites
+            if (allPrereqs.size > 0) {
+                html += `<h5>Prerequisites:</h5><ul>`;
+                const sortedPrereqs = Array.from(allPrereqs.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+                sortedPrereqs.forEach(([courseId, courseInfo]) => {
+                    const type = prereqTypes.get(courseId);
+                    const typeLabel = type === 'parallel' ? ' (Parallel)' : type === 'both' ? ' (Prerequisite & Parallel)' : '';
+                    html += `<li>${courseId} - ${courseInfo.name}${typeLabel}</li>`;
+                });
+                html += `</ul>`;
+            }
+            
+            // Dependents (courses that have this course as a prerequisite)
+            const dependentEdges = allEdges.filter(e => {
+                const sourceId = typeof e.source === 'object' ? e.source.id : e.source;
+                return sourceId === node.id;
+            });
+
+            if (dependentEdges.length > 0) {
+                // Deduplicate dependent courses (same course can have multiple edge types)
+                const uniqueDependents = new Map();
+                dependentEdges.forEach(edge => {
+                    const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+                    const targetInfo = coursesInfo[targetId];
+                    if (targetInfo && !targetInfo.isPhantom) {
+                        uniqueDependents.set(targetId, targetInfo);
+                    }
+                });
+
+                if (uniqueDependents.size > 0) {
+                    html += `<h5>Dependent Courses:</h5><ul>`;
+                    // Sort by course ID for consistent ordering
+                    const sortedDependents = Array.from(uniqueDependents.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+                    sortedDependents.forEach(([courseId, courseInfo]) => {
+                        const courseName = courseInfo.name || '';
+                        html += `<li>${courseId}${courseName ? ' - ' + courseName : ''}</li>`;
+                    });
+                    html += `</ul>`;
+                }
+            }
+            
+            content.html(html);
+            panel.style('display', 'block');
+        }
+        
+        function closeDetailedInfo() {
+            d3.select('#detailedInfo').style('display', 'none');
+        }
+        
+        // Focus on course chain
+        function focusOnCourse(courseId) {
+            if (!coursesInfo[courseId]) {
+                alert(`Course ${courseId} not found`);
+                return;
+            }
+            
+            chainMode = true;
+            focusedNode = courseId;
+            
+            // Show chain mode info
+            const chainInfo = d3.select('#chainModeInfo');
+            const chainText = d3.select('#chainModeText');
+            const courseName = coursesInfo[courseId].name || '';
+            chainText.text(`: ${courseId} - ${courseName}`);
+            chainInfo.style('display', 'block');
+            
+            // Calculate chain nodes
+            const chainNodes = new Set([courseId]);
+            const prereqs = new Set();
+            const dependents = new Set();
+            
+            // Get prerequisites recursively
+            function getPrereqs(nodeId) {
+                const node = coursesInfo[nodeId];
+                if (!node) return;
+                
+                [...(node.prereqs || []), ...(node.parallel || [])].forEach(prereq => {
+                    if (!prereqs.has(prereq) && coursesInfo[prereq]) {
+                        prereqs.add(prereq);
+                        chainNodes.add(prereq);
+                        getPrereqs(prereq);
+                    }
+                });
+            }
+            
+            // Get dependents recursively
+            function getDependents(nodeId) {
+                allEdges.forEach(edge => {
+                    const sourceId = edge.source.id || edge.source;
+                    const targetId = edge.target.id || edge.target;
+                    
+                    if (sourceId === nodeId && !dependents.has(targetId)) {
+                        dependents.add(targetId);
+                        chainNodes.add(targetId);
+                        getDependents(targetId);
+                    }
+                });
+            }
+            
+            getPrereqs(courseId);
+            getDependents(courseId);
+            
+            // Filter nodes and edges for chain
+            const chainNodesList = Array.from(chainNodes);
+            const filteredNodes = allNodes.filter(node => chainNodes.has(node.id));
+            const filteredEdges = allEdges.filter(edge => {
+                const sourceId = edge.source.id || edge.source;
+                const targetId = edge.target.id || edge.target;
+                return chainNodes.has(sourceId) && chainNodes.has(targetId);
+            });
+            
+            // Color nodes based on relationship
+            filteredNodes.forEach(node => {
+                if (node.id === courseId) {
+                    node.chainColor = 'yellow';
+                } else if (prereqs.has(node.id)) {
+                    node.chainColor = 'red';
+                } else if (dependents.has(node.id)) {
+                    node.chainColor = 'blue';
+                } else {
+                    node.chainColor = 'gray';
+                }
+            });
+            
+            // Show detailed info
+            const nodeData = { id: courseId, ...coursesInfo[courseId] };
+            showDetailedInfo(nodeData);
+            
+            // Redraw with filtered data
+            drawGraph(filteredNodes, filteredEdges);
+        }
+        
+        // Reset to full view
+        function resetView() {
+            chainMode = false;
+            focusedNode = null;
+            d3.select('#chainModeInfo').style('display', 'none');
+            closeDetailedInfo();
+            
+            // Reset node colors
+            allNodes.forEach(node => {
+                node.chainColor = null;
+            });
+            
+            // Reposition nodes in hierarchical structure
+            positionNodesByLevel(allNodes, levels);
+            
+            drawGraph(allNodes, allEdges);
+        }
+        
+        // Draw the graph
+        function drawGraph(nodes, edges) {
+            // Clear previous graph
+            g.selectAll('*').remove();
+
+            // Filter phantom nodes and edges if checkbox is checked
+            const hidePhantoms = document.getElementById('hidePhantoms').checked;
+
+            let filteredNodes = nodes;
+            let filteredEdges = edges;
+
+            if (hidePhantoms) {
+                // Filter out phantom nodes
+                filteredNodes = nodes.filter(node => !node.isPhantom);
+
+                // Filter out edges that connect to phantom nodes
+                const nonPhantomIds = new Set(filteredNodes.map(n => n.id));
+                filteredEdges = edges.filter(edge => {
+                    const sourceId = edge.source.id || edge.source;
+                    const targetId = edge.target.id || edge.target;
+                    return nonPhantomIds.has(sourceId) && nonPhantomIds.has(targetId);
+                });
+            }
+            
+            // Create simulation that maintains perfect horizontal alignment
+            simulation = d3.forceSimulation(filteredNodes)
+                .force('link', d3.forceLink(filteredEdges).id(d => d.id)
+                    .distance(80)
+                    .strength(0.1))
+                .force('charge', d3.forceManyBody()
+                    .strength(-20))
+                .force('collision', d3.forceCollide()
+                    .radius(35))
+                .force('x', d3.forceX().strength(0.02)) // Very weak X centering
+                .alpha(0.1) // Very low alpha for minimal movement
+                .alphaDecay(0.05);
+            
+            // Create edges
+            const link = g.append('g')
+                .selectAll('path')
+                .data(filteredEdges)
+                .join('path')
+                .attr('class', d => `edge ${d.type}`)
+                .attr('marker-end', d => d.type === 'parallel' ? 'url(#arrowhead-red)' : 'url(#arrowhead)');
+
+            // Create nodes with uniform size and special styling for phantoms
+            const node = g.append('g')
+                .selectAll('circle')
+                .data(filteredNodes)
+                .join('circle')
+                .attr('class', 'node')
+                .attr('r', 12) // Uniform radius for all nodes
+                .attr('fill', d => {
+                    if (d.isPhantom) return '#cccccc'; // Gray for phantom nodes
+                    if (d.chainColor) return d.chainColor;
+                    return d3.interpolateViridis((levels[d.id] || 0) / Math.max(...Object.values(levels)));
+                })
+                .attr('stroke', d => d.isPhantom ? '#999' : '#333')
+                .attr('stroke-width', d => d.isPhantom ? 2 : 1.5)
+                .attr('stroke-dasharray', d => d.isPhantom ? '3,3' : 'none')
+                .call(drag(simulation))
+                .on('click', function(event, d) {
+                    event.stopPropagation();
+                    if (d.isPhantom) {
+                        alert(`This is a phantom course (${d.id}) referenced as a prerequisite but not found in the dataset.`);
+                        return;
+                    }
+                    if (chainMode && d.id === focusedNode) {
+                        showDetailedInfo(d);
+                    } else {
+                        focusOnCourse(d.id);
+                    }
+                })
+                .on('mouseover', function(event, d) {
+                    const tooltip = d3.select('#tooltip');
+                    tooltip.html(createTooltipContent(d))
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY + 10) + 'px')
+                        .style('display', 'block');
+                })
+                .on('mouseout', function() {
+                    d3.select('#tooltip').style('display', 'none');
+                });
+            
+            // Create labels with course number and name on separate lines
+            const labelGroup = g.append('g')
+                .selectAll('g')
+                .data(filteredNodes)
+                .join('g')
+                .attr('class', 'node-label-group');
+
+            // Course number (first line)
+            const courseNumber = labelGroup.append('text')
+                .attr('class', 'node-label-number')
+                .text(d => d.id)
+                .style('font-size', '10px')
+                .style('font-weight', 'bold')
+                .style('text-anchor', 'middle')
+                .style('fill', d => d.isPhantom ? '#666' : '#333')
+                .style('font-style', d => d.isPhantom ? 'italic' : 'normal');
+
+            // Course name (second line)
+            const courseName = labelGroup.append('text')
+                .attr('class', 'node-label-name')
+                .text(d => {
+                    if (d.isPhantom) {
+                        return '';
+                    }
+                    const name = d.name && d.name !== 'undefined' ? d.name : '';
+                    if (name && name.length > 20) {
+                        return name.substring(0, 17) + '...';
+                    }
+                    return name;
+                })
+                .style('font-size', '8px')
+                .style('font-weight', 'bold')
+                .style('text-anchor', 'middle')
+                .style('fill', d => d.isPhantom ? '#666' : '#333')
+                .style('font-style', d => d.isPhantom ? 'italic' : 'normal');
+            
+            // Update positions on simulation tick
+            simulation.on('tick', () => {
+                link.attr('d', d => {
+                    const source = d.source;
+                    const target = d.target;
+                    return `M${source.x},${source.y}L${target.x},${target.y}`;
+                });
+                
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+                    
+                labelGroup
+                    .attr('transform', d => `translate(${d.x}, ${d.y + 25})`);
+
+                courseNumber
+                    .attr('y', 0);
+
+                courseName
+                    .attr('y', 12); // Position name 12px below number
+            });
+        }
+        
+        // Drag behavior
+        function drag(simulation) {
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+            
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+            
+            return d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended);
+        }
+        
+        // Process uploaded CSV file
+        function processCSV(file) {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if (results.errors.length > 0) {
+                        alert('Error parsing CSV: ' + results.errors[0].message);
+                        return;
+                    }
+                    
+                    const { nodes, edges, courseInfo } = buildGraph(results.data);
+                    
+                    if (nodes.length === 0) {
+                        alert('No valid course data found in CSV');
+                        return;
+                    }
+                    
+                    graph = { nodes, edges };
+                    coursesInfo = courseInfo;
+                    levels = calculateLevels(nodes, edges);
+                    allNodes = [...nodes];
+                    allEdges = [...edges];
+                    
+                    positionNodesByLevel(nodes, levels);
+                    
+                    d3.select('#status').text(`Loaded ${nodes.length} courses with ${edges.length} relationships`);
+                    
+                    initVisualization();
+                    drawGraph(nodes, edges);
+                }
+            });
+        }
+        
+        // Event listeners
+        document.getElementById('csvFile').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                consoleMessages = []; // Clear previous messages
+                processCSV(e.target.files[0]);
+            }
+        });
+        
+        // Dynamic search functionality
+        let currentHighlightIndex = -1;
+        let searchResults = [];
+
+        function searchCourses(query) {
+            if (!query || query.length < 1) return [];
+
+            const lowerQuery = query.toLowerCase();
+            const results = [];
+
+            Object.keys(coursesInfo).forEach(courseId => {
+                const course = coursesInfo[courseId];
+                if (course.isPhantom) return; // Skip phantom courses
+
+                const matchesNumber = courseId.toLowerCase().includes(lowerQuery);
+                const matchesName = course.name && course.name.toLowerCase().includes(lowerQuery);
+
+                if (matchesNumber || matchesName) {
+                    results.push({
+                        id: courseId,
+                        name: course.name || '',
+                        matchType: matchesNumber ? 'number' : 'name'
+                    });
+                }
+            });
+
+            // Sort results: exact number matches first, then partial number matches, then name matches
+            results.sort((a, b) => {
+                if (a.id === query && b.id !== query) return -1;
+                if (b.id === query && a.id !== query) return 1;
+                if (a.matchType === 'number' && b.matchType === 'name') return -1;
+                if (b.matchType === 'number' && a.matchType === 'name') return 1;
+                return a.id.localeCompare(b.id);
+            });
+
+            return results.slice(0, 10); // Limit to 10 results
+        }
+
+        function updateSearchDropdown(results) {
+            const dropdown = document.getElementById('searchDropdown');
+
+            if (results.length === 0) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            const html = results.map((result, index) => {
+                const highlightClass = index === currentHighlightIndex ? 'highlighted' : '';
+                return `<div class="search-item ${highlightClass}" data-course-id="${result.id}" data-index="${index}">
+                    <span class="course-number">${result.id}</span>
+                    ${result.name ? `<span class="course-name">${result.name}</span>` : ''}
+                </div>`;
+            }).join('');
+
+            dropdown.innerHTML = html;
+            dropdown.style.display = 'block';
+        }
+
+        function selectCourse(courseId) {
+            console.log('Selecting course:', courseId);
+            if (coursesInfo[courseId]) {
+                focusOnCourse(courseId);
+                document.getElementById('searchBox').value = '';
+                document.getElementById('searchDropdown').style.display = 'none';
+                currentHighlightIndex = -1;
+            } else {
+                console.error('Course not found:', courseId);
+            }
+        }
+
+        function hideSearchDropdown() {
+            setTimeout(() => {
+                document.getElementById('searchDropdown').style.display = 'none';
+                currentHighlightIndex = -1;
+            }, 150); // Small delay to allow click events
+        }
+
+        // Search box event listeners
+        document.getElementById('searchBox').addEventListener('input', function(e) {
+            const query = e.target.value.trim();
+            searchResults = searchCourses(query);
+            currentHighlightIndex = -1;
+            updateSearchDropdown(searchResults);
+        });
+
+        document.getElementById('searchBox').addEventListener('keydown', function(e) {
+            const dropdown = document.getElementById('searchDropdown');
+
+            if (dropdown.style.display === 'none') return;
+
+            switch(e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    currentHighlightIndex = Math.min(currentHighlightIndex + 1, searchResults.length - 1);
+                    updateSearchDropdown(searchResults);
+                    break;
+
+                case 'ArrowUp':
+                    e.preventDefault();
+                    currentHighlightIndex = Math.max(currentHighlightIndex - 1, -1);
+                    updateSearchDropdown(searchResults);
+                    break;
+
+                case 'Enter':
+                    e.preventDefault();
+                    if (currentHighlightIndex >= 0 && searchResults[currentHighlightIndex]) {
+                        selectCourse(searchResults[currentHighlightIndex].id);
+                    } else if (searchResults.length === 1) {
+                        selectCourse(searchResults[0].id);
+                    }
+                    break;
+
+                case 'Escape':
+                    hideSearchDropdown();
+                    break;
+            }
+        });
+
+        document.getElementById('searchBox').addEventListener('blur', hideSearchDropdown);
+
+        // Dropdown click events - use mousedown to prevent blur from hiding dropdown first
+        document.getElementById('searchDropdown').addEventListener('mousedown', function(e) {
+            e.preventDefault(); // Prevent blur event on search box
+            const item = e.target.closest('.search-item');
+            if (item) {
+                const courseId = item.getAttribute('data-course-id');
+                console.log('Dropdown item clicked:', courseId);
+                selectCourse(courseId);
+            }
+        });
+        
+        document.getElementById('hidePhantoms').addEventListener('change', function() {
+            if (allNodes.length > 0) {
+                if (chainMode) {
+                    focusOnCourse(focusedNode);
+                } else {
+                    drawGraph(allNodes, allEdges);
+                }
+            }
+        });
+        
+        document.getElementById('resetView').addEventListener('click', resetView);
+        
+        document.getElementById('showConsole').addEventListener('click', showConsole);
+        
+        document.getElementById('consoleFilter').addEventListener('input', updateConsoleDisplay);
+        
+        document.getElementById('clearConsole').addEventListener('click', clearConsole);
+        
+        document.getElementById('downloadConsole').addEventListener('click', downloadConsole);
+        
+        // Click background to exit chain mode
+        document.addEventListener('click', function(e) {
+            if (chainMode && !e.target.closest('#detailedInfo') && !e.target.closest('.node')) {
+                resetView();
+            }
+        });
+        
+        // Initialize console capture
+        captureConsole();
+
+        // Auto-load default CSV data
+        function loadDefaultData() {
+            fetch('course-data-csv-mod-ext.csv')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Failed to load CSV: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(csvText => {
+                    Papa.parse(csvText, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            if (results.errors.length > 0) {
+                                console.error('Error parsing default CSV:', results.errors[0].message);
+                                return;
+                            }
+
+                            const { nodes, edges, courseInfo } = buildGraph(results.data);
+
+                            if (nodes.length === 0) {
+                                console.error('No valid course data found in default CSV');
+                                return;
+                            }
+
+                            graph = { nodes, edges };
+                            coursesInfo = courseInfo;
+                            levels = calculateLevels(nodes, edges);
+                            allNodes = [...nodes];
+                            allEdges = [...edges];
+
+                            positionNodesByLevel(nodes, levels);
+
+                            d3.select('#status').text(`Loaded ${nodes.length} courses with ${edges.length} relationships`);
+
+                            initVisualization();
+                            drawGraph(nodes, edges);
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.warn('Could not load default CSV file:', error.message);
+                    d3.select('#status').text('Upload a CSV file to begin visualization (default file not found)');
+                });
+        }
+
+        // Load default data when page loads
+        window.addEventListener('load', loadDefaultData);
+        
+    </script>
+</body>
+</html>
